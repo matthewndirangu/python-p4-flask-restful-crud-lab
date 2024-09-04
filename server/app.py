@@ -3,6 +3,7 @@
 from flask import Flask, jsonify, request, make_response
 from flask_migrate import Migrate
 from flask_restful import Api, Resource
+from flask_cors import CORS  # Import CORS
 
 from models import db, Plant
 
@@ -11,12 +12,17 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///plants.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.json.compact = False
 
+# Initialize CORS
+CORS(app)
+
+# Initialize the database and migration tools
 migrate = Migrate(app, db)
 db.init_app(app)
 
+# Initialize Flask-RESTful API
 api = Api(app)
 
-
+# Resource for handling collection of plants
 class Plants(Resource):
 
     def get(self):
@@ -37,19 +43,44 @@ class Plants(Resource):
 
         return make_response(new_plant.to_dict(), 201)
 
-
+# Add the Plants resource to the API at the /plants endpoint
 api.add_resource(Plants, '/plants')
 
-
+# Resource for handling individual plants by ID
 class PlantByID(Resource):
 
     def get(self, id):
-        plant = Plant.query.filter_by(id=id).first().to_dict()
-        return make_response(jsonify(plant), 200)
+        plant = db.session.get(Plant, id)
+        if plant:
+            return make_response(jsonify(plant.to_dict()), 200)
+        return make_response(jsonify({"error": "Plant not found"}), 404)
 
+    def patch(self, id):
+        plant = db.session.get(Plant, id)
+        if not plant:
+            return make_response(jsonify({"error": "Plant not found"}), 404)
+        
+        data = request.get_json()
 
+        if "is_in_stock" in data:
+            plant.is_in_stock = data["is_in_stock"]
+
+        db.session.commit()
+
+        return make_response(jsonify(plant.to_dict()), 200)
+
+    def delete(self, id):
+        plant = db.session.get(Plant, id)
+        if not plant:
+            return make_response(jsonify({"error": "Plant not found"}), 404)
+
+        db.session.delete(plant)
+        db.session.commit()
+
+        return make_response('', 204)
+
+# Add the PlantByID resource to the API at the /plants/<id> endpoint
 api.add_resource(PlantByID, '/plants/<int:id>')
-
 
 if __name__ == '__main__':
     app.run(port=5555, debug=True)
